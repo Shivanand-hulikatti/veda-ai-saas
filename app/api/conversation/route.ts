@@ -1,10 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,7 +14,7 @@ export async function POST(req: NextRequest) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return new NextResponse("API key not configured", { status: 500 });
     }
 
@@ -24,17 +22,20 @@ export async function POST(req: NextRequest) {
       return new NextResponse("Invalid messages format", { status: 400 });
     }
 
-    const validatedMessages = messages.map((msg: any) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: validatedMessages,
-    });
+    const chat = model.startChat();
+    let response;
 
-    return NextResponse.json(response.choices[0]?.message || { content: "No response" });
+    for (const message of messages) {
+      if (message.role === "user") {
+        response = await chat.sendMessage(message.content);
+      }
+    }
+
+    const result = response?.response.text() || "No response";
+
+    return NextResponse.json({ content: result });
   } catch (e: any) {
     console.error("[CONVERSATION_ERROR]", e.message || e);
     return new NextResponse("Internal error", { status: 500 });
